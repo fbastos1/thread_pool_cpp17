@@ -5,6 +5,7 @@ C++17 implementation of a thread pool. Requires some C++17 features (see *Requir
 ```
 #include <iostream>
 #include <vector>
+#include "threadpool.h"
 
 int multiply(int x, int y) {
     return x * y;
