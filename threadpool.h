@@ -90,22 +90,30 @@ private:
 };
 
 template <typename F, typename... Args,
-          std::enable_if_t<std::is_invocable_v<F &&, Args &&...>, int>>
+    std::enable_if_t<std::is_invocable_v<F &&, Args &&...>, int>
+>
 auto thread_pool::execute(F &&function, Args &&... args) {
-    //auto err = _task_container([](int x) {});
-
     std::unique_lock<std::mutex> queue_lock(_task_mutex, std::defer_lock);
     std::packaged_task<std::invoke_result_t<F, Args...>()> task_pkg(
-        std::bind(function, args...));
+        //in C++20, this could be:
+        // [..., _fargs = std::forward<Args>(args)...]
+        [
+         _f = std::move(function),
+         _fargs = std::make_tuple(std::forward<Args>(args)...)
+	    ]() mutable {
+	        return std::apply(std::move(_f), std::move(_fargs));
+	    }
+    );
     std::future<std::invoke_result_t<F, Args...>> future = task_pkg.get_future();
 
     queue_lock.lock();
-    // this lambda move-captures the packaged_task declared above. Since the
-    // packaged_task
-    //  type is not CopyConstructible, the function is not CopyConstructible
-    //  either - hence the need for a _task_container to wrap around it.
+    //this lambda move-captures the packaged_task declared above. Since the
+    //  packaged_task type is not CopyConstructible, the function is not
+    //  CopyConstructible either - hence the need for a _task_container to wrap
+    //  around it.
     _tasks.emplace(allocate_task_container(
-        [task(std::move(task_pkg))]() mutable { task(); }));
+        [task(std::move(task_pkg))]() mutable { task(); }
+    ));
     queue_lock.unlock();
 
     _task_cv.notify_one();
